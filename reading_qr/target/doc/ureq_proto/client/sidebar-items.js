@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"constant":["MAX_RESPONSE_HEADERS"],"enum":["Await100Result","RecvBodyResult","RecvResponseResult","RedirectAuthHeaders","SendRequestResult"],"mod":["state"],"struct":["Call"]};

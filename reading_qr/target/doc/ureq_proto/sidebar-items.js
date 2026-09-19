@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["BodyMode","CloseReason","Error"],"mod":["client","parser"]};

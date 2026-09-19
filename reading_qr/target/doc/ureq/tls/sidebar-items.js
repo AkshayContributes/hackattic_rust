@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["PemItem","RootCerts","TlsProvider"],"fn":["parse_pem"],"struct":["Certificate","ClientCert","PrivateKey","TlsConfig","TlsConfigBuilder"]};

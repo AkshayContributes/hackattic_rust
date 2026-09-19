@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"struct":["AgentScope","HttpCrateScope","RequestScope","WithBody","WithoutBody"]};

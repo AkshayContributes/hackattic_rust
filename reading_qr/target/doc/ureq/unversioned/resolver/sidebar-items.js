@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"struct":["ArrayVec","DefaultResolver"],"trait":["Resolver"],"type":["ResolvedSocketAddrs"]};

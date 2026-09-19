@@ -3,4 +3,5 @@ resolver = "2"
 members = [
     "reading_qr",
     "help_me_unpack",
+    "mini_miner",
 ]

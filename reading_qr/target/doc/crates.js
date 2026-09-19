@@ -1,0 +1,2 @@
+window.ALL_CRATES = ["adler2","base64","bytes","cfg_if","crc32fast","flate2","getrandom","http","httparse","itoa","libc","log","miniz_oxide","once_cell","percent_encoding","reading_qr","ring","rustls","rustls_pki_types","simd_adler32","subtle","untrusted","ureq","ureq_proto","utf8_zero","webpki","webpki_roots","zeroize"];
+//{"start":21,"fragment_lengths":[8,9,8,9,12,9,12,7,11,7,7,6,14,12,19,13,7,9,19,15,9,12,7,13,12,9,15,10]}

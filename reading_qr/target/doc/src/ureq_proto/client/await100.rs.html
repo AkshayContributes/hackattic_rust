@@ -1,0 +1,113 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `/Users/akshayth/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ureq-proto-0.6.4/src/client/await100.rs`."><title>await100.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../../static.files/rustdoc-1ed95124.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="ureq_proto" data-themes="" data-resource-suffix="" data-rustdoc-version="1.98.1 (48a229cea 2026-09-01)" data-channel="1.98.1" data-search-js="search-9944d736.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../../../static.files/storage-41dd4d93.js"></script><script defer src="../../../static.files/src-script-813739b1.js"></script><script defer src="../../../src-files.js"></script><script defer src="../../../static.files/main-417ebf0a.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><h1><div class="sub-heading">ureq_proto/client/</div>await100.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="kw">use </span>http::StatusCode;
+<a href=#2 id=2 data-nosnippet>2</a>
+<a href=#3 id=3 data-nosnippet>3</a><span class="kw">use </span><span class="kw">crate</span>::Error;
+<a href=#4 id=4 data-nosnippet>4</a><span class="kw">use </span><span class="kw">crate</span>::body::BodyWriter;
+<a href=#5 id=5 data-nosnippet>5</a><span class="kw">use </span><span class="kw">crate</span>::parser::try_parse_response;
+<a href=#6 id=6 data-nosnippet>6</a>
+<a href=#7 id=7 data-nosnippet>7</a><span class="kw">use </span><span class="kw">super</span>::state::Await100;
+<a href=#8 id=8 data-nosnippet>8</a><span class="kw">use super</span>::{Await100Result, Call};
+<a href=#9 id=9 data-nosnippet>9</a><span class="kw">use </span><span class="kw">crate</span>::CloseReason;
+<a href=#10 id=10 data-nosnippet>10</a>
+<a href=#11 id=11 data-nosnippet>11</a><span class="kw">impl </span>Call&lt;Await100&gt; {
+<a href=#12 id=12 data-nosnippet>12</a>    <span class="doccomment">/// Attempt to read a 100-continue response.
+<a href=#13 id=13 data-nosnippet>13</a>    ///
+<a href=#14 id=14 data-nosnippet>14</a>    /// Tries to interpret bytes sent by the server as a 100-continue response. The expect-100 mechanic
+<a href=#15 id=15 data-nosnippet>15</a>    /// means we hope the server will give us an indication on whether to upload a potentially big
+<a href=#16 id=16 data-nosnippet>16</a>    /// request body, before we start doing it.
+<a href=#17 id=17 data-nosnippet>17</a>    ///
+<a href=#18 id=18 data-nosnippet>18</a>    /// * If the server supports expect-100, it will respond `HTTP/1.1 100 Continue\r\n\r\n`, or
+<a href=#19 id=19 data-nosnippet>19</a>    ///   some other response code (such as 403) if we are not allowed to post the body.
+<a href=#20 id=20 data-nosnippet>20</a>    /// * If the server does not support expect-100, it will not respond at all, in which case
+<a href=#21 id=21 data-nosnippet>21</a>    ///   we will proceed to sending the request body after some timeout.
+<a href=#22 id=22 data-nosnippet>22</a>    ///
+<a href=#23 id=23 data-nosnippet>23</a>    /// The results are:
+<a href=#24 id=24 data-nosnippet>24</a>    ///
+<a href=#25 id=25 data-nosnippet>25</a>    /// * `Ok(0)` - not enough data yet, continue waiting (or `proceed()` if you think we waited enough)
+<a href=#26 id=26 data-nosnippet>26</a>    /// * `Ok(n)` - `n` number of input bytes were consumed. Call `proceed()` next
+<a href=#27 id=27 data-nosnippet>27</a>    /// * `Err(e)` - some error that is not recoverable
+<a href=#28 id=28 data-nosnippet>28</a>    </span><span class="kw">pub fn </span>try_read_100(<span class="kw-2">&amp;mut </span><span class="self">self</span>, input: <span class="kw-2">&amp;</span>[u8]) -&gt; <span class="prelude-ty">Result</span>&lt;usize, Error&gt; {
+<a href=#29 id=29 data-nosnippet>29</a>        <span class="comment">// Try parsing a status line without any headers. The line we are looking for is:
+<a href=#30 id=30 data-nosnippet>30</a>        //
+<a href=#31 id=31 data-nosnippet>31</a>        //   HTTP/1.1 100 Continue\r\n\r\n
+<a href=#32 id=32 data-nosnippet>32</a>        //
+<a href=#33 id=33 data-nosnippet>33</a>        // There should be no headers.
+<a href=#34 id=34 data-nosnippet>34</a>        </span><span class="kw">match </span>try_parse_response::&lt;<span class="number">0</span>&gt;(input) {
+<a href=#35 id=35 data-nosnippet>35</a>            <span class="prelude-val">Ok</span>(v) =&gt; <span class="kw">match </span>v {
+<a href=#36 id=36 data-nosnippet>36</a>                <span class="prelude-val">Some</span>((input_used, response)) =&gt; {
+<a href=#37 id=37 data-nosnippet>37</a>                    <span class="kw">let </span>status = response.status();
+<a href=#38 id=38 data-nosnippet>38</a>
+<a href=#39 id=39 data-nosnippet>39</a>                    <span class="kw">if </span>status == StatusCode::CONTINUE {
+<a href=#40 id=40 data-nosnippet>40</a>                        <span class="comment">// Got 100 Continue - proceed to send the body
+<a href=#41 id=41 data-nosnippet>41</a>                        </span><span class="self">self</span>.inner.await_100_continue = <span class="bool-val">false</span>;
+<a href=#42 id=42 data-nosnippet>42</a>                        <span class="macro">assert!</span>(<span class="self">self</span>.inner.state.writer.has_body());
+<a href=#43 id=43 data-nosnippet>43</a>                        <span class="prelude-val">Ok</span>(input_used)
+<a href=#44 id=44 data-nosnippet>44</a>                    } <span class="kw">else if </span>status == StatusCode::SWITCHING_PROTOCOLS {
+<a href=#45 id=45 data-nosnippet>45</a>                        <span class="comment">// 101 Switching Protocols - don't send body, mark connection, proceed to recv response
+<a href=#46 id=46 data-nosnippet>46</a>                        // https://curl.se/mail/lib-2004-08/0002.html
+<a href=#47 id=47 data-nosnippet>47</a>                        </span><span class="self">self</span>.inner.await_100_continue = <span class="bool-val">false</span>;
+<a href=#48 id=48 data-nosnippet>48</a>                        <span class="self">self</span>.inner.close_reason.push(CloseReason::ProtocolSwitch);
+<a href=#49 id=49 data-nosnippet>49</a>                        <span class="self">self</span>.inner.state.writer = BodyWriter::new_none();
+<a href=#50 id=50 data-nosnippet>50</a>                        <span class="prelude-val">Ok</span>(<span class="number">0</span>)
+<a href=#51 id=51 data-nosnippet>51</a>                    } <span class="kw">else if </span>status.is_informational() {
+<a href=#52 id=52 data-nosnippet>52</a>                        <span class="comment">// Other 1xx (102 Processing, 103 Early Hints, etc.)
+<a href=#53 id=53 data-nosnippet>53</a>                        // Consume transparently and continue waiting for 100 or timeout.
+<a href=#54 id=54 data-nosnippet>54</a>                        // Do NOT set await_100_continue to false - keep waiting.
+<a href=#55 id=55 data-nosnippet>55</a>                        </span><span class="prelude-val">Ok</span>(input_used)
+<a href=#56 id=56 data-nosnippet>56</a>                    } <span class="kw">else </span>{
+<a href=#57 id=57 data-nosnippet>57</a>                        <span class="comment">// Non-informational response (2xx-5xx) - don't send body
+<a href=#58 id=58 data-nosnippet>58</a>                        // https://curl.se/mail/lib-2004-08/0002.html
+<a href=#59 id=59 data-nosnippet>59</a>                        </span><span class="self">self</span>.inner.await_100_continue = <span class="bool-val">false</span>;
+<a href=#60 id=60 data-nosnippet>60</a>                        <span class="self">self</span>.inner.close_reason.push(CloseReason::Not100Continue);
+<a href=#61 id=61 data-nosnippet>61</a>                        <span class="self">self</span>.inner.state.writer = BodyWriter::new_none();
+<a href=#62 id=62 data-nosnippet>62</a>                        <span class="prelude-val">Ok</span>(<span class="number">0</span>)
+<a href=#63 id=63 data-nosnippet>63</a>                    }
+<a href=#64 id=64 data-nosnippet>64</a>                }
+<a href=#65 id=65 data-nosnippet>65</a>                <span class="comment">// Not enough input yet.
+<a href=#66 id=66 data-nosnippet>66</a>                </span><span class="prelude-val">None </span>=&gt; <span class="prelude-val">Ok</span>(<span class="number">0</span>),
+<a href=#67 id=67 data-nosnippet>67</a>            },
+<a href=#68 id=68 data-nosnippet>68</a>            <span class="prelude-val">Err</span>(e) =&gt; {
+<a href=#69 id=69 data-nosnippet>69</a>                <span class="self">self</span>.inner.await_100_continue = <span class="bool-val">false</span>;
+<a href=#70 id=70 data-nosnippet>70</a>
+<a href=#71 id=71 data-nosnippet>71</a>                <span class="kw">if </span>e == Error::HttpParseTooManyHeaders {
+<a href=#72 id=72 data-nosnippet>72</a>                    <span class="comment">// We encountered headers after the status line. That means the server did
+<a href=#73 id=73 data-nosnippet>73</a>                    // not send 100-continue, and also continued to produce an answer before we
+<a href=#74 id=74 data-nosnippet>74</a>                    // sent the body. Regardless of what the answer is, we must not send the body.
+<a href=#75 id=75 data-nosnippet>75</a>                    // A 200-answer would be nonsensical given we haven't yet sent the body.
+<a href=#76 id=76 data-nosnippet>76</a>                    //
+<a href=#77 id=77 data-nosnippet>77</a>                    // We do however want to receive the response to be able to provide
+<a href=#78 id=78 data-nosnippet>78</a>                    // the Response&lt;()&gt; to the user. Hence this is not considered an error.
+<a href=#79 id=79 data-nosnippet>79</a>                    </span><span class="self">self</span>.inner.close_reason.push(CloseReason::Not100Continue);
+<a href=#80 id=80 data-nosnippet>80</a>                    <span class="self">self</span>.inner.state.writer = BodyWriter::new_none();
+<a href=#81 id=81 data-nosnippet>81</a>                    <span class="prelude-val">Ok</span>(<span class="number">0</span>)
+<a href=#82 id=82 data-nosnippet>82</a>                } <span class="kw">else </span>{
+<a href=#83 id=83 data-nosnippet>83</a>                    <span class="prelude-val">Err</span>(e)
+<a href=#84 id=84 data-nosnippet>84</a>                }
+<a href=#85 id=85 data-nosnippet>85</a>            }
+<a href=#86 id=86 data-nosnippet>86</a>        }
+<a href=#87 id=87 data-nosnippet>87</a>    }
+<a href=#88 id=88 data-nosnippet>88</a>
+<a href=#89 id=89 data-nosnippet>89</a>    <span class="doccomment">/// Tell if there is any point in waiting for more data from the server.
+<a href=#90 id=90 data-nosnippet>90</a>    ///
+<a href=#91 id=91 data-nosnippet>91</a>    /// Becomes `false` as soon as `try_read_100()` got enough data to determine what to do next.
+<a href=#92 id=92 data-nosnippet>92</a>    /// This might become `false` even if `try_read_100` returns `Ok(0)`.
+<a href=#93 id=93 data-nosnippet>93</a>    ///
+<a href=#94 id=94 data-nosnippet>94</a>    /// If this returns `false`, the user should continue with `proceed()`.
+<a href=#95 id=95 data-nosnippet>95</a>    </span><span class="kw">pub fn </span>can_keep_await_100(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
+<a href=#96 id=96 data-nosnippet>96</a>        <span class="self">self</span>.inner.await_100_continue
+<a href=#97 id=97 data-nosnippet>97</a>    }
+<a href=#98 id=98 data-nosnippet>98</a>
+<a href=#99 id=99 data-nosnippet>99</a>    <span class="doccomment">/// Proceed to the next state.
+<a href=#100 id=100 data-nosnippet>100</a>    </span><span class="kw">pub fn </span>proceed(<span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;Await100Result, Error&gt; {
+<a href=#101 id=101 data-nosnippet>101</a>        <span class="comment">// We can always proceed out of Await100
+<a href=#102 id=102 data-nosnippet>102</a>
+<a href=#103 id=103 data-nosnippet>103</a>        </span><span class="kw">if </span><span class="self">self</span>.inner.state.writer.has_body() {
+<a href=#104 id=104 data-nosnippet>104</a>            <span class="comment">// TODO(martin): do i need this?
+<a href=#105 id=105 data-nosnippet>105</a>            // call.inner.call.analyze_request()?;
+<a href=#106 id=106 data-nosnippet>106</a>            </span><span class="kw">let </span>call = Call::wrap(<span class="self">self</span>.inner);
+<a href=#107 id=107 data-nosnippet>107</a>            <span class="prelude-val">Ok</span>(Await100Result::SendBody(call))
+<a href=#108 id=108 data-nosnippet>108</a>        } <span class="kw">else </span>{
+<a href=#109 id=109 data-nosnippet>109</a>            <span class="prelude-val">Ok</span>(Await100Result::RecvResponse(Call::wrap(<span class="self">self</span>.inner)))
+<a href=#110 id=110 data-nosnippet>110</a>        }
+<a href=#111 id=111 data-nosnippet>111</a>    }
+<a href=#112 id=112 data-nosnippet>112</a>}
+</code></pre></div></section></main></body></html>

@@ -1,0 +1,211 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="HTTP/1.1 client protocol"><title>ureq_proto::client - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-1ed95124.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="ureq_proto" data-themes="" data-resource-suffix="" data-rustdoc-version="1.98.1 (48a229cea 2026-09-01)" data-channel="1.98.1" data-search-js="search-9944d736.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../../static.files/storage-41dd4d93.js"></script><script defer src="../sidebar-items.js"></script><script defer src="../../static.files/main-417ebf0a.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc mod"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Module client</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../ureq_proto/index.html">ureq_<wbr>proto</a><span class="version">0.6.4</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Module client</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#example" title="Example">Example</a></li></ul><h3><a href="#modules">Module Items</a></h3><ul class="block"><li><a href="#modules" title="Modules">Modules</a></li><li><a href="#structs" title="Structs">Structs</a></li><li><a href="#enums" title="Enums">Enums</a></li><li><a href="#constants" title="Constants">Constants</a></li></ul></section><div id="rustdoc-modnav"><h2 class="in-crate"><a href="../index.html">In crate ureq_<wbr>proto</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../index.html">ureq_proto</a></div><h1>Module <span>client</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../src/ureq_proto/client/mod.rs.html#1-1416">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>HTTP/1.1 client protocol</p>
+<p>Sans-IO protocol impl, which means “writing” and “reading” are made via buffers
+rather than the Write/Read std traits.</p>
+<p>The <a href="struct.Call.html" title="struct ureq_proto::client::Call"><code>Call</code></a> object attempts to encode correct HTTP/1.1 handling using
+state variables, for example <code>Call&lt;'a, SendRequest&gt;</code> to represent the
+lifecycle stage where we are to send the request.</p>
+<p>The states are:</p>
+<ul>
+<li><strong>Prepare</strong> - Preparing a request means 1) adding headers such as
+cookies. 2) acquiring the connection from a pool or opening a new
+socket (potentially wrappping in TLS)</li>
+<li><strong>SendRequest</strong> - Send the first row, which is the method, path
+and version as well as the request headers</li>
+<li><strong>SendBody</strong> - Send the request body</li>
+<li><strong>Await100</strong> - If there is an <code>Expect: 100-continue</code> header, the
+client should pause before sending the body</li>
+<li><strong>RecvResponse</strong> - Receive the response, meaning the status and
+version and the response headers</li>
+<li><strong>RecvBody</strong> - Receive the response body</li>
+<li><strong>Redirect</strong> - Handle redirects, potentially spawning new requests</li>
+<li><strong>Cleanup</strong> - Return the connection to the pool or close it</li>
+</ul>
+<div class="example-wrap"><pre class="language-text"><code>                           ┌──────────────────┐
+┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ▶│     Prepare      │
+                           └──────────────────┘
+│                                    │
+                                     ▼
+│                          ┌──────────────────┐
+                        ┌──│   SendRequest    │──────────────┐
+│                       │  └──────────────────┘              │
+                        │            │                       │
+│                       │            ▼                       ▼
+                        │  ┌──────────────────┐    ┌──────────────────┐
+│                       │  │     SendBody     │◀───│     Await100     │
+                        │  └──────────────────┘    └──────────────────┘
+│                       │            │                       │
+                        │            ▼                       │
+│                       └─▶┌──────────────────┐◀─────────────┘
+             ┌─────────────│   RecvResponse   │──┐
+│            │             └──────────────────┘  │
+             │                       │           │
+│            ▼                       ▼           │
+   ┌──────────────────┐    ┌──────────────────┐  │
+└ ─│     Redirect     │◀───│     RecvBody     │  │
+   └──────────────────┘    └──────────────────┘  │
+             │                       │           │
+             │                       ▼           │
+             │             ┌──────────────────┐  │
+             └────────────▶│     Cleanup      │◀─┘
+                           └──────────────────┘</code></pre></div><h2 id="example"><a class="doc-anchor" href="#example">§</a>Example</h2>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>ureq_proto::client::<span class="kw-2">*</span>;
+<span class="kw">use </span>ureq_proto::http::Request;
+
+<span class="kw">let </span>request = Request::put(<span class="string">"https://example.test/my-path"</span>)
+    .header(<span class="string">"Expect"</span>, <span class="string">"100-continue"</span>)
+    .header(<span class="string">"x-foo"</span>, <span class="string">"bar"</span>)
+    .body(())
+    .unwrap();
+
+<span class="comment">// ********************************** Prepare
+
+</span><span class="kw">let </span><span class="kw-2">mut </span>call = Call::new(request).unwrap();
+
+<span class="comment">// Prepare with state from cookie jar. The uri
+// is used to key the cookies.
+</span><span class="kw">let </span>uri = call.uri();
+
+<span class="comment">// call.header("Cookie", "my_cookie1=value1");
+// call.header("Cookie", "my_cookie2=value2");
+
+// Obtain a connection for the uri, either a
+// pooled connection from a previous http/1.1
+// keep-alive, or open a new. The connection
+// must be TLS wrapped if the scheme so indicate.
+// let connection = todo!();
+
+// Sans-IO means it does not use any
+// Write trait or similar. Requests and request
+// bodies are written to a buffer that in turn
+// should be sent via the connection.
+</span><span class="kw">let </span><span class="kw-2">mut </span>output = <span class="macro">vec!</span>[<span class="number">0_u8</span>; <span class="number">1024</span>];
+
+<span class="comment">// ********************************** SendRequest
+
+// Proceed to the next state writing the request.
+</span><span class="kw">let </span><span class="kw-2">mut </span>call = call.proceed();
+
+<span class="kw">let </span>output_used = call.write(<span class="kw-2">&amp;mut </span>output).unwrap();
+<span class="macro">assert_eq!</span>(output_used, <span class="number">107</span>);
+
+<span class="macro">assert_eq!</span>(<span class="kw-2">&amp;</span>output[..output_used], <span class="string">b"\
+    PUT /my-path HTTP/1.1\r\n\
+    host: example.test\r\n\
+    transfer-encoding: chunked\r\n\
+    expect: 100-continue\r\n\
+    x-foo: bar\r\n\
+    \r\n"</span>);
+
+<span class="comment">// Check we can continue to send the body
+</span><span class="macro">assert!</span>(call.can_proceed());
+
+<span class="comment">// ********************************** Await100
+
+// In this example, we know the next state is Await100.
+// A real client needs to match on the variants.
+</span><span class="kw">let </span><span class="kw-2">mut </span>call = <span class="kw">match </span>call.proceed() {
+    <span class="prelude-val">Ok</span>(<span class="prelude-val">Some</span>(SendRequestResult::Await100(v))) =&gt; v,
+    <span class="kw">_ </span>=&gt; <span class="macro">panic!</span>(),
+};
+
+<span class="comment">// When awaiting 100, the client should run a timer and
+// proceed to sending the body either when the server
+// indicates it can receive the body, or the timer runs out.
+
+// This boolean can be checked whether there's any point
+// in keeping waiting for the timer to run out.
+</span><span class="macro">assert!</span>(call.can_keep_await_100());
+
+<span class="kw">let </span>input = <span class="string">b"HTTP/1.1 100 Continue\r\n\r\n"</span>;
+<span class="kw">let </span>input_used = call.try_read_100(input).unwrap();
+
+<span class="macro">assert_eq!</span>(input_used, <span class="number">25</span>);
+<span class="macro">assert!</span>(!call.can_keep_await_100());
+
+<span class="comment">// ********************************** SendBody
+
+// Proceeding is possible regardless of whether the
+// can_keep_await_100() is true or false.
+// A real client needs to match on the variants.
+</span><span class="kw">let </span><span class="kw-2">mut </span>call = <span class="kw">match </span>call.proceed() {
+    <span class="prelude-val">Ok</span>(Await100Result::SendBody(v)) =&gt; v,
+    <span class="kw">_ </span>=&gt; <span class="macro">panic!</span>(),
+};
+
+<span class="kw">let </span>(input_used, o1) =
+    call.write(<span class="string">b"hello"</span>, <span class="kw-2">&amp;mut </span>output).unwrap();
+
+<span class="macro">assert_eq!</span>(input_used, <span class="number">5</span>);
+
+<span class="comment">// When doing transfer-encoding: chunked,
+// the end of body must be signaled with
+// an empty input. This is also valid for
+// regular content-length body.
+</span><span class="macro">assert!</span>(!call.can_proceed());
+
+<span class="kw">let </span>(<span class="kw">_</span>, o2) = call.write(<span class="kw-2">&amp;</span>[], <span class="kw-2">&amp;mut </span>output[o1..]).unwrap();
+
+<span class="kw">let </span>output_used = o1 + o2;
+<span class="macro">assert_eq!</span>(output_used, <span class="number">15</span>);
+
+<span class="macro">assert_eq!</span>(<span class="kw-2">&amp;</span>output[..output_used], <span class="string">b"\
+    5\r\n\
+    hello\
+    \r\n\
+    0\r\n\
+    \r\n"</span>);
+
+<span class="macro">assert!</span>(call.can_proceed());
+
+<span class="comment">// ********************************** RecvRequest
+
+// Proceed to read the request.
+</span><span class="kw">let </span><span class="kw-2">mut </span>call = call.proceed().unwrap();
+
+<span class="kw">let </span>part = <span class="string">b"HTTP/1.1 200 OK\r\nContent-Len"</span>;
+<span class="kw">let </span>full = <span class="string">b"HTTP/1.1 200 OK\r\nContent-Length: 9\r\n\r\n"</span>;
+
+<span class="comment">// try_response can be used repeatedly until we
+// get enough content including all headers.
+</span><span class="kw">let </span>(input_used, maybe_response) =
+    call.try_response(part, <span class="bool-val">false</span>).unwrap();
+
+<span class="macro">assert_eq!</span>(input_used, <span class="number">0</span>);
+<span class="macro">assert!</span>(maybe_response.is_none());
+
+<span class="kw">let </span>(input_used, maybe_response) =
+    call.try_response(full, <span class="bool-val">false</span>).unwrap();
+
+<span class="macro">assert_eq!</span>(input_used, <span class="number">38</span>);
+<span class="kw">let </span>response = maybe_response.unwrap();
+
+<span class="comment">// ********************************** RecvBody
+
+// It's not possible to proceed until we
+// have read a response.
+</span><span class="kw">let </span><span class="kw-2">mut </span>call = <span class="kw">match </span>call.proceed() {
+    <span class="prelude-val">Some</span>(RecvResponseResult::RecvBody(v)) =&gt; v,
+    <span class="kw">_ </span>=&gt; <span class="macro">panic!</span>(),
+};
+
+<span class="kw">let</span>(input_used, output_used) =
+    call.read(<span class="string">b"hi there!"</span>, <span class="kw-2">&amp;mut </span>output).unwrap();
+
+<span class="macro">assert_eq!</span>(input_used, <span class="number">9</span>);
+<span class="macro">assert_eq!</span>(output_used, <span class="number">9</span>);
+
+<span class="macro">assert_eq!</span>(<span class="kw-2">&amp;</span>output[..output_used], <span class="string">b"hi there!"</span>);
+
+<span class="comment">// ********************************** Cleanup
+
+</span><span class="kw">let </span>call = <span class="kw">match </span>call.proceed() {
+    <span class="prelude-val">Some</span>(RecvBodyResult::Cleanup(v)) =&gt; v,
+    <span class="kw">_ </span>=&gt; <span class="macro">panic!</span>(),
+};
+
+<span class="kw">if </span>call.must_close_connection() {
+    <span class="comment">// connection.close();
+</span>} <span class="kw">else </span>{
+    <span class="comment">// connection.return_to_pool();
+</span>}
+</code></pre></div></div></details><h2 id="modules" class="section-header">Modules<a href="#modules" class="anchor">§</a></h2><dl class="item-table"><dt><a class="mod" href="state/index.html" title="mod ureq_proto::client::state">state</a></dt><dd>State types for the Call state machine.</dd></dl><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><dl class="item-table"><dt><a class="struct" href="struct.Call.html" title="struct ureq_proto::client::Call">Call</a></dt><dd>A state machine for an HTTP request/response cycle.</dd></dl><h2 id="enums" class="section-header">Enums<a href="#enums" class="anchor">§</a></h2><dl class="item-table"><dt><a class="enum" href="enum.Await100Result.html" title="enum ureq_proto::client::Await100Result">Await100<wbr>Result</a></dt><dd>Possible state transitions after awaiting a 100 Continue response.</dd><dt><a class="enum" href="enum.RecvBodyResult.html" title="enum ureq_proto::client::RecvBodyResult">Recv<wbr>Body<wbr>Result</a></dt><dd>Possible state transitions after receiving a response body.</dd><dt><a class="enum" href="enum.RecvResponseResult.html" title="enum ureq_proto::client::RecvResponseResult">Recv<wbr>Response<wbr>Result</a></dt><dd>Possible state transitions after receiving a response.</dd><dt><a class="enum" href="enum.RedirectAuthHeaders.html" title="enum ureq_proto::client::RedirectAuthHeaders">Redirect<wbr>Auth<wbr>Headers</a></dt><dd>Strategy for preserving authorization headers during redirects.</dd><dt><a class="enum" href="enum.SendRequestResult.html" title="enum ureq_proto::client::SendRequestResult">Send<wbr>Request<wbr>Result</a></dt><dd>Possible state transitions after sending a request.</dd></dl><h2 id="constants" class="section-header">Constants<a href="#constants" class="anchor">§</a></h2><dl class="item-table"><dt><a class="constant" href="constant.MAX_RESPONSE_HEADERS.html" title="constant ureq_proto::client::MAX_RESPONSE_HEADERS">MAX_<wbr>RESPONSE_<wbr>HEADERS</a></dt><dd>Max number of headers to parse from an HTTP response</dd></dl></section></div></main></body></html>
